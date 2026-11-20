@@ -39,7 +39,14 @@ async function ensureIndexes(database) {
       { key: { status: 1, createdAt: -1 }, name: "status_created" },
       { key: { category: 1, status: 1 }, name: "category_status" },
       { key: { ownerId: 1, createdAt: -1 }, name: "owner_created" },
+      { key: { createdAt: -1 }, name: "created_recent" },
       { key: { name: "text", location: "text" }, name: "equipment_search" },
+    ]);
+
+  await database
+    .collection("user")
+    .createIndexes([
+      { key: { role: 1, createdAt: -1 }, name: "role_created" },
     ]);
 
   await database
@@ -52,6 +59,11 @@ async function ensureIndexes(database) {
       { key: { customerId: 1, createdAt: -1 }, name: "customer_created" },
       { key: { ownerId: 1, createdAt: -1 }, name: "owner_bookings" },
       { key: { equipmentId: 1, bookingStatus: 1 }, name: "equipment_status" },
+      { key: { bookingStatus: 1, createdAt: -1 }, name: "status_created" },
+      {
+        key: { paymentStatus: 1, bookingStatus: 1, createdAt: -1 },
+        name: "revenue_analytics",
+      },
     ]);
 
   await database
@@ -68,4 +80,11 @@ async function ensureIndexes(database) {
   await database
     .collection("reviews")
     .createIndex({ featured: 1, createdAt: -1 }, { name: "reviews_featured" });
+
+  await database
+    .collection("contactMessages")
+    .createIndexes([
+      { key: { createdAt: -1 }, name: "message_recent" },
+      { key: { read: 1, createdAt: -1 }, name: "message_unread" },
+    ]);
 }
