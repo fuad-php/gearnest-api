@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getDB } from "../config/db.js";
 import { verifyAdmin } from "../middleware/auth.js";
 import { serialize } from "../utils/serialize.js";
+import { escapeRegex, paginate, parsePagination } from "../utils/query.js";
 import { badRequest, validate } from "../utils/validate.js";
 
 const router = Router();
@@ -18,13 +19,8 @@ const equipmentStatusSchema = z.object({
   status: z.enum(["pending", "approved", "rejected"]),
 });
 
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 router.get("/users", async (req, res) => {
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+  const { page, limit, skip } = parsePagination(req.query);
   const filter = {};
 
   if (req.query.role && req.query.role !== "all") {
@@ -36,24 +32,31 @@ router.get("/users", async (req, res) => {
     filter.$or = [{ name: term }, { email: term }];
   }
 
-  const collection = getDB().collection("user");
-  const [items, total] = await Promise.all([
-    collection
-      .find(filter)
-      .project({ name: 1, email: 1, role: 1, phone: 1, address: 1, image: 1, createdAt: 1 })
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .toArray(),
-    collection.countDocuments(filter),
-  ]);
+  const { items, total, pages } = await paginate(
+    getDB().collection("user"),
+    filter,
+    {
+      page,
+      limit,
+      skip,
+      project: {
+        name: 1,
+        email: 1,
+        role: 1,
+        phone: 1,
+        address: 1,
+        image: 1,
+        createdAt: 1,
+      },
+    },
+  );
 
   res.json({
     data: serialize(items),
     page,
     limit,
     total,
-    pages: Math.max(1, Math.ceil(total / limit)),
+    pages,
   });
 });
 
@@ -85,8 +88,7 @@ router.patch("/users/:id/role", async (req, res) => {
 });
 
 router.get("/equipment", async (req, res) => {
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+  const { page, limit, skip } = parsePagination(req.query);
   const filter = {};
 
   if (req.query.status && req.query.status !== "all") {
@@ -98,23 +100,18 @@ router.get("/equipment", async (req, res) => {
     filter.$or = [{ name: term }, { location: term }, { ownerEmail: term }];
   }
 
-  const collection = getDB().collection("equipment");
-  const [items, total] = await Promise.all([
-    collection
-      .find(filter)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .toArray(),
-    collection.countDocuments(filter),
-  ]);
+  const { items, total, pages } = await paginate(
+    getDB().collection("equipment"),
+    filter,
+    { page, limit, skip },
+  );
 
   res.json({
     data: serialize(items),
     page,
     limit,
     total,
-    pages: Math.max(1, Math.ceil(total / limit)),
+    pages,
   });
 });
 
@@ -142,8 +139,7 @@ router.patch("/equipment/:id/status", async (req, res) => {
 });
 
 router.get("/bookings", async (req, res) => {
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+  const { page, limit, skip } = parsePagination(req.query);
   const filter = {};
 
   if (req.query.status && req.query.status !== "all") {
@@ -160,24 +156,55 @@ router.get("/bookings", async (req, res) => {
     ];
   }
 
-  const collection = getDB().collection("bookings");
-  const [items, total] = await Promise.all([
-    collection
-      .find(filter)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .toArray(),
-    collection.countDocuments(filter),
-  ]);
+  const { items, total, pages } = await paginate(
+    getDB().collection("bookings"),
+    filter,
+    { page, limit, skip },
+  );
 
   res.json({
     data: serialize(items),
     page,
     limit,
     total,
-    pages: Math.max(1, Math.ceil(total / limit)),
+    pages,
   });
+});
+
+router.get("/messages", async (req, res) => {
+  const { page, limit, skip } = parsePagination(req.query);
+  const filter = {};
+
+  if (req.query.read === "true") filter.read = true;
+  if (req.query.read === "false") filter.read = false;
+
+  const { items, total, pages } = await paginate(
+    getDB().collection("contactMessages"),
+    filter,
+    { page, limit, skip },
+  );
+
+  res.json({ data: serialize(items), page, limit, total, pages });
+});
+
+router.patch("/messages/:id/read", async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: "Message not found" });
+  }
+
+  const result = await getDB()
+    .collection("contactMessages")
+    .findOneAndUpdate(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { read: true, readAt: new Date() } },
+      { returnDocument: "after" },
+    );
+
+  if (!result) {
+    return res.status(404).json({ message: "Message not found" });
+  }
+
+  res.json({ data: serialize(result) });
 });
 
 function monthKeys(months = 6) {
