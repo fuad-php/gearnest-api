@@ -12,6 +12,8 @@ import usersRouter from "./src/routes/users.js";
 import favoritesRouter from "./src/routes/favorites.js";
 import paymentsRouter from "./src/routes/payments.js";
 import bookingsRouter from "./src/routes/bookings.js";
+import ownerRouter from "./src/routes/owner.js";
+import adminRouter from "./src/routes/admin.js";
 import { stripeWebhook } from "./src/routes/webhook.js";
 
 const app = express();
@@ -60,6 +62,8 @@ app.use("/api/users", usersRouter);
 app.use("/api/favorites", favoritesRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/bookings", bookingsRouter);
+app.use("/api/owner", ownerRouter);
+app.use("/api/admin", adminRouter);
 
 app.use(notFound);
 app.use(errorHandler);
