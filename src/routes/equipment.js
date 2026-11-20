@@ -4,6 +4,8 @@ import { z } from "zod";
 import { getDB } from "../config/db.js";
 import { CATEGORIES, RENTAL_TYPES } from "../constants/index.js";
 import { verifyOwner, verifyOwnerOrAdmin } from "../middleware/auth.js";
+import { bookedQuantity } from "../utils/availability.js";
+import { parseDateRange } from "../utils/pricing.js";
 import { serialize } from "../utils/serialize.js";
 import { badRequest, validate } from "../utils/validate.js";
 
@@ -162,6 +164,46 @@ router.get("/:id", async (req, res) => {
   }
 
   res.json({ data: serialize(equipment) });
+});
+
+router.get("/:id/availability", async (req, res) => {
+  const { startDate, endDate } = req.query;
+
+  if (!startDate || !endDate) {
+    return res
+      .status(400)
+      .json({ message: "startDate and endDate are required" });
+  }
+
+  const range = parseDateRange(startDate, endDate);
+  if (range.error) return res.status(400).json({ message: range.error });
+
+  if (!ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: "Equipment not found" });
+  }
+
+  const equipment = await getDB()
+    .collection("equipment")
+    .findOne({ _id: new ObjectId(req.params.id), status: "approved" });
+
+  if (!equipment) {
+    return res.status(404).json({ message: "Equipment not found" });
+  }
+
+  const booked = await bookedQuantity(
+    getDB(),
+    equipment._id,
+    range.start,
+    range.end,
+  );
+
+  res.json({
+    data: {
+      quantity: equipment.quantity,
+      booked,
+      remaining: Math.max(0, Number(equipment.quantity) - booked),
+    },
+  });
 });
 
 router.post("/", verifyOwner, async (req, res) => {

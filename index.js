@@ -9,6 +9,10 @@ import reviewsRouter from "./src/routes/reviews.js";
 import contactRouter from "./src/routes/contact.js";
 import uploadsRouter from "./src/routes/uploads.js";
 import usersRouter from "./src/routes/users.js";
+import favoritesRouter from "./src/routes/favorites.js";
+import paymentsRouter from "./src/routes/payments.js";
+import bookingsRouter from "./src/routes/bookings.js";
+import { stripeWebhook } from "./src/routes/webhook.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,6 +28,12 @@ app.use(
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
   }),
 );
+app.post(
+  "/api/payments/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook,
+);
+
 app.use(express.json({ limit: "12mb" }));
 app.use(morgan("dev"));
 
@@ -47,6 +57,9 @@ app.use("/api/reviews", reviewsRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/uploads", uploadsRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/favorites", favoritesRouter);
+app.use("/api/payments", paymentsRouter);
+app.use("/api/bookings", bookingsRouter);
 
 app.use(notFound);
 app.use(errorHandler);
