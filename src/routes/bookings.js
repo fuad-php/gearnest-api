@@ -22,6 +22,26 @@ router.get("/my", verifyRenter, async (req, res) => {
   res.json({ data: serialize(bookings) });
 });
 
+router.get("/:id", verifyRenter, async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+
+  const booking = await getDB()
+    .collection("bookings")
+    .findOne({ _id: new ObjectId(req.params.id) });
+
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+
+  if (String(booking.customerId) !== req.user.id) {
+    return res.status(403).json({ message: "This booking is not yours" });
+  }
+
+  res.json({ data: serialize(booking) });
+});
+
 router.patch("/:id/cancel", verifyRenter, async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: "Booking not found" });
