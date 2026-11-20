@@ -70,7 +70,7 @@ function verifyRole(...roles) {
   };
 }
 
-export const verifyRenter = verifyRole("customer");
-export const verifyOwner = verifyRole("owner");
-export const verifyAdmin = verifyRole("admin");
-export const verifyOwnerOrAdmin = verifyRole("owner", "admin");
+export const verifyRenter = [verifyToken, verifyRole("customer")];
+export const verifyOwner = [verifyToken, verifyRole("owner")];
+export const verifyAdmin = [verifyToken, verifyRole("admin")];
+export const verifyOwnerOrAdmin = [verifyToken, verifyRole("owner", "admin")];
