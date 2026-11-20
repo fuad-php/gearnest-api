@@ -7,6 +7,8 @@ import { errorHandler, notFound } from "./src/middleware/error.js";
 import equipmentRouter from "./src/routes/equipment.js";
 import reviewsRouter from "./src/routes/reviews.js";
 import contactRouter from "./src/routes/contact.js";
+import uploadsRouter from "./src/routes/uploads.js";
+import usersRouter from "./src/routes/users.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -43,6 +45,8 @@ app.get("/api/health", async (req, res) => {
 app.use("/api/equipment", equipmentRouter);
 app.use("/api/reviews", reviewsRouter);
 app.use("/api/contact", contactRouter);
+app.use("/api/uploads", uploadsRouter);
+app.use("/api/users", usersRouter);
 
 app.use(notFound);
 app.use(errorHandler);
