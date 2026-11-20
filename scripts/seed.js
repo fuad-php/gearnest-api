@@ -352,6 +352,146 @@ const REVIEWS = [
   },
 ];
 
+const SEED_BOOKINGS = [
+  {
+    key: "seed_booking_completed",
+    equipment: "CAT 320 Excavator",
+    startOffset: -45,
+    endOffset: -42,
+    quantity: 1,
+    days: 3,
+    amountCents: 126_000,
+    bookingStatus: "completed",
+    notes: "Left the keys with the site foreman.",
+  },
+  {
+    key: "seed_booking_active",
+    equipment: "Sony A7 IV Cinema Kit",
+    startOffset: -2,
+    endOffset: 3,
+    quantity: 1,
+    days: 5,
+    amountCents: 47_500,
+    bookingStatus: "active",
+    notes: "Picked up for a three-day shoot, extended by two.",
+  },
+  {
+    key: "seed_booking_confirmed",
+    equipment: "Event Stage & Truss Kit",
+    startOffset: 10,
+    endOffset: 12,
+    quantity: 1,
+    days: 2,
+    amountCents: 76_000,
+    bookingStatus: "confirmed",
+    notes: "Outdoor community event — ballast required.",
+  },
+  {
+    key: "seed_booking_cancelled",
+    equipment: "Cargo Van 12ft",
+    startOffset: 20,
+    endOffset: 23,
+    quantity: 1,
+    days: 3,
+    amountCents: 33_000,
+    bookingStatus: "cancelled",
+    notes: "Move date changed.",
+  },
+];
+
+const SEED_FAVORITES = ["Sony A7 IV Cinema Kit", "DJI Mavic 3 Pro"];
+
+async function seedDemoActivity(db, userIds) {
+  const customer = await db
+    .collection("user")
+    .findOne({ email: "customer@gearnest.com" });
+
+  if (!customer) return;
+
+  const now = Date.now();
+  let bookingCount = 0;
+
+  for (const item of SEED_BOOKINGS) {
+    const equipment = await db
+      .collection("equipment")
+      .findOne({ name: item.equipment });
+
+    if (!equipment) continue;
+
+    const exists = await db
+      .collection("bookings")
+      .findOne({ stripeSessionId: item.key });
+
+    if (exists) continue;
+
+    const start = new Date(now + item.startOffset * DAY);
+    const end = new Date(now + item.endOffset * DAY);
+    const cancelled = item.bookingStatus === "cancelled";
+
+    await db.collection("bookings").insertOne({
+      equipmentId: equipment._id,
+      equipmentName: equipment.name,
+      equipmentImage: equipment.image,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerEmail: customer.email,
+      ownerId: equipment.ownerId,
+      ownerName: equipment.ownerName,
+      rentalStartDate: start,
+      rentalEndDate: end,
+      quantity: item.quantity,
+      days: item.days,
+      totalAmountCents: item.amountCents,
+      paymentStatus: cancelled ? "refunded" : "paid",
+      bookingStatus: item.bookingStatus,
+      contactNumber: customer.phone,
+      deliveryAddress: customer.address,
+      notes: item.notes,
+      stripeSessionId: item.key,
+      provider: "demo",
+      createdAt: new Date(now + (item.startOffset - 1) * DAY),
+      updatedAt: new Date(),
+    });
+
+    await db.collection("payments").updateOne(
+      { stripeSessionId: item.key },
+      {
+        $setOnInsert: {
+          customerId: customer._id,
+          ownerId: equipment.ownerId,
+          amountCents: item.amountCents,
+          currency: "usd",
+          provider: "demo",
+          status: cancelled ? "refunded" : "paid",
+          createdAt: new Date(now + (item.startOffset - 1) * DAY),
+        },
+      },
+      { upsert: true },
+    );
+
+    bookingCount += 1;
+  }
+
+  console.log(`demo bookings inserted: ${bookingCount}`);
+
+  for (const name of SEED_FAVORITES) {
+    const equipment = await db.collection("equipment").findOne({ name });
+    if (!equipment) continue;
+
+    await db.collection("favorites").updateOne(
+      { userId: customer._id, equipmentId: equipment._id },
+      {
+        $setOnInsert: {
+          userId: customer._id,
+          equipmentId: equipment._id,
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true },
+    );
+  }
+}
+
 async function main() {
   const client = new MongoClient(uri);
   await client.connect();
@@ -452,6 +592,8 @@ async function main() {
   } else {
     console.log(`reviews already present: ${reviewCount}`);
   }
+
+  await seedDemoActivity(db, userIds);
 
   await db.collection("equipment").createIndexes([
     { key: { status: 1, createdAt: -1 }, name: "status_created" },
