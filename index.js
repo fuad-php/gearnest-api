@@ -43,7 +43,8 @@ app.post(
   stripeWebhook,
 );
 
-app.use(express.json({ limit: "12mb" }));
+app.use(express.json({ limit: "7mb" }));
+app.use(express.urlencoded({ extended: true, limit: "7mb" }));
 app.use(morgan("dev"));
 
 app.use((req, res, next) => {
