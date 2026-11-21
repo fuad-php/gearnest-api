@@ -2,24 +2,51 @@ import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getDB } from "../config/db.js";
 import { verifyRenter } from "../middleware/auth.js";
+import { paginate, parsePagination } from "../utils/query.js";
 import { serialize } from "../utils/serialize.js";
 
 const router = Router();
 
-router.get("/my", verifyRenter, async (req, res) => {
-  const filter = { customerId: new ObjectId(req.user.id) };
+const BOOKING_STATUSES = new Set([
+  "confirmed",
+  "active",
+  "completed",
+  "cancelled",
+]);
 
-  if (req.query.status && req.query.status !== "all") {
+router.get("/my", verifyRenter, async (req, res) => {
+  const { page, limit, skip } = parsePagination(req.query, {
+    defaultLimit: 6,
+    maxLimit: 50,
+  });
+  const customerId = new ObjectId(req.user.id);
+  const filter = { customerId };
+
+  if (BOOKING_STATUSES.has(req.query.status)) {
     filter.bookingStatus = req.query.status;
   }
 
-  const bookings = await getDB()
-    .collection("bookings")
-    .find(filter)
-    .sort({ createdAt: -1 })
-    .toArray();
+  const bookings = getDB().collection("bookings");
 
-  res.json({ data: serialize(bookings) });
+  const [{ items, total, pages }, grouped] = await Promise.all([
+    paginate(bookings, filter, { page, limit, skip }),
+    bookings
+      .aggregate([
+        { $match: { customerId } },
+        { $group: { _id: "$bookingStatus", count: { $sum: 1 } } },
+      ])
+      .toArray(),
+  ]);
+
+  // Counts power the status tabs, which must stay stable while a tab is active.
+  const counts = { all: 0, confirmed: 0, active: 0, completed: 0, cancelled: 0 };
+
+  for (const row of grouped) {
+    if (row._id in counts) counts[row._id] = row.count;
+    counts.all += row.count;
+  }
+
+  res.json({ data: serialize(items), page, limit, total, pages, counts });
 });
 
 router.get("/:id", verifyRenter, async (req, res) => {
