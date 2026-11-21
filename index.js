@@ -16,6 +16,7 @@ import ownerRouter from "./src/routes/owner.js";
 import adminRouter from "./src/routes/admin.js";
 import { stripeWebhook } from "./src/routes/webhook.js";
 import { startBookingStatusJob } from "./src/jobs/booking-status.js";
+import { mailProvider } from "./src/utils/mailer.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -95,6 +96,7 @@ connectDB()
   .then(() => {
     const server = app.listen(port, () => {
       console.log(`GearNest API listening on http://localhost:${port}`);
+      console.log(`[mail] provider: ${mailProvider()}`);
       startBookingStatusJob();
     });
 

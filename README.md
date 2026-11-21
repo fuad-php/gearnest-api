@@ -20,7 +20,7 @@ Client repository: sibling `../client` (Next.js 16).
 | Validation | zod |
 | Uploads | imgbb (server-side proxy) |
 | Scheduling | node-cron (hourly booking status sweep) |
-| Email | nodemailer over SMTP (console fallback when unconfigured) |
+| Email | Mailgun API (`mailgun.js`), nodemailer SMTP fallback |
 | Logging | morgan |
 
 ### npm packages used
@@ -31,7 +31,8 @@ Client repository: sibling `../client` (Next.js 16).
 - `stripe` — Checkout sessions and webhook verification
 - `zod` — request validation
 - `node-cron` — scheduled booking status updates
-- `nodemailer` — completion emails to renters and owners
+- `mailgun.js` + `form-data` — transactional email through the Mailgun API
+- `nodemailer` — SMTP fallback when Mailgun is not configured
 - `cors` — origin allow-list for the client
 - `dotenv` — environment loading
 - `morgan` — request logging
@@ -62,16 +63,20 @@ cp .env.example .env
 | `STRIPE_SECRET_KEY` | no | Enables real Stripe Checkout |
 | `STRIPE_WEBHOOK_SECRET` | no | Verifies the Stripe webhook signature |
 | `IMGBB_API_KEY` | no | Enables image uploads |
-| `SMTP_HOST` | no | SMTP server for completion emails |
+| `MAILGUN_API_KEY` | no | Mailgun private API key (primary email provider) |
+| `MAILGUN_DOMAIN` | no | Verified Mailgun sending domain, e.g. `mg.gearnest.com` |
+| `MAILGUN_REGION` | no | `us` (default) or `eu` |
+| `SMTP_HOST` | no | SMTP fallback server |
 | `SMTP_PORT` | no | SMTP port, defaults to `587` |
 | `SMTP_SECURE` | no | `true` for implicit TLS (port 465) |
 | `SMTP_USER` / `SMTP_PASS` | no | SMTP credentials |
-| `MAIL_FROM` | no | From header, e.g. `GearNest <no-reply@gearnest.com>` |
+| `MAIL_FROM` | no | From header on the verified domain, e.g. `GearNest <no-reply@gearnest.com>` |
 
 The server starts without the optional keys. Without `STRIPE_SECRET_KEY`, checkout runs in
-a clearly labelled demo mode so the full booking flow remains testable. Without SMTP
-credentials, completion emails are written to the console (`[mail:skipped] …`) instead of
-failing, so the cron job still works locally.
+a clearly labelled demo mode so the full booking flow remains testable. Email delivery picks
+the first configured provider: **Mailgun → SMTP → console**. Without credentials, completion
+emails are written to the console (`[mail:skipped] …`) instead of failing, so the cron job
+still works locally. The chosen provider is printed at boot as `[mail] provider: …`.
 
 ### 3. Seed
 
@@ -225,7 +230,41 @@ checkout ──▶ bookingDrafts (TTL 30 min)
 - On completion, `notifyCompletion` emails the **renter** and the **equipment owner**
   (`completionEmails`). `completionNotifiedAt` is written after sending, so retries and
   restarts do not spam inboxes.
-- Without SMTP credentials the emails are logged, not sent — the status update still runs.
+- Without email credentials the messages are logged, not sent — the status update still runs.
+
+### Email delivery with Mailgun
+
+The API sends transactional mail through the Mailgun HTTP API, with nodemailer SMTP and a
+console logger as fallbacks.
+
+1. Create a Mailgun account and add a sending domain under **Sending → Domains**.
+2. Add the DNS records Mailgun shows (SPF, DKIM, and optionally the tracking CNAME) and wait
+   for the domain to show as **verified**.
+3. Copy the **Private API key** from **Settings → API keys** and the domain name.
+4. Fill in the server `.env`:
+
+   ```bash
+   MAILGUN_API_KEY=key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   MAILGUN_DOMAIN=mg.yourdomain.com
+   MAILGUN_REGION=us            # use "eu" for EU-hosted domains
+   MAIL_FROM=GearNest <no-reply@mg.yourdomain.com>
+   ```
+
+5. Restart the API. The boot log confirms the choice: `[mail] provider: mailgun`.
+6. Complete a rental (owner dashboard or wait for the cron sweep). The log should show
+   `[mail:sent:mailgun] …` with a Mailgun message id, and both the renter and owner should
+   receive the email.
+
+Notes:
+
+- `MAIL_FROM` must use the verified Mailgun domain, otherwise Mailgun rejects the message.
+- On the free **sandbox domain** (`sandbox….mailgun.org`) you can only send to addresses you
+  add under **Authorized recipients**.
+- If Mailgun is configured but a send fails, the error is logged
+  (`[mail:error:mailgun] …`) and the booking still completes; it does not silently fall back
+  to SMTP, which avoids duplicate emails.
+- Prefer Mailgun over raw SMTP on hosts that block outbound SMTP ports (Render, Railway and
+  many PaaS providers). SMTP is only used when the Mailgun variables are empty.
 
 ---
 
@@ -258,7 +297,7 @@ src/
     bookings.js           idempotent draft → booking
     completion.js         atomic completion + notification guard
     booking-emails.js     renter and owner completion templates
-    mailer.js             nodemailer transport with console fallback
+    mailer.js             Mailgun client, SMTP fallback, console fallback
     query.js              shared pagination helpers
     serialize.js          ObjectId/Date serialisation
     validate.js           zod helper + error formatting
@@ -273,7 +312,7 @@ src/
 2. Set `MONGODB_URI` (Atlas recommended), `BETTER_AUTH_URL` (the deployed client origin),
    and `CLIENT_URL` (same origin, plus any preview domains).
 3. Add `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `IMGBB_API_KEY` to enable those
-   integrations, and the `SMTP_*` values to deliver completion emails.
+   integrations, and the `MAILGUN_*` values (plus `MAIL_FROM`) to deliver completion emails.
 4. Register the webhook: `https://<api-domain>/api/payments/webhook` for the
    `checkout.session.completed` event.
 5. Verify `GET /api/health` returns `{ "status": "ok", "database": "connected" }`.
