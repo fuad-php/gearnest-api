@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { z } from "zod";
 import { getDB } from "../config/db.js";
 import { verifyOwner } from "../middleware/auth.js";
+import { completeBooking } from "../utils/completion.js";
 import { serialize } from "../utils/serialize.js";
 import { badRequest, validate } from "../utils/validate.js";
 
@@ -99,6 +100,11 @@ router.patch("/bookings/:id/status", async (req, res) => {
     return res.status(400).json({
       message: `Cannot move a ${booking.bookingStatus} booking to ${next}`,
     });
+  }
+
+  if (next === "completed") {
+    const result = await completeBooking(db, booking, { reason: "owner" });
+    return res.json({ data: serialize(result.booking) });
   }
 
   const updates = { bookingStatus: next, updatedAt: new Date() };

@@ -15,6 +15,7 @@ import bookingsRouter from "./src/routes/bookings.js";
 import ownerRouter from "./src/routes/owner.js";
 import adminRouter from "./src/routes/admin.js";
 import { stripeWebhook } from "./src/routes/webhook.js";
+import { startBookingStatusJob } from "./src/jobs/booking-status.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -94,6 +95,7 @@ connectDB()
   .then(() => {
     const server = app.listen(port, () => {
       console.log(`GearNest API listening on http://localhost:${port}`);
+      startBookingStatusJob();
     });
 
     async function shutdown(signal) {

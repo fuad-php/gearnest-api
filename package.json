@@ -8,7 +8,12 @@
     "start": "node index.js",
     "seed": "node scripts/seed.js"
   },
-  "keywords": ["equipment-rental", "express", "mongodb", "stripe"],
+  "keywords": [
+    "equipment-rental",
+    "express",
+    "mongodb",
+    "stripe"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
@@ -19,6 +24,8 @@
     "jose": "^6.2.18",
     "mongodb": "^7.9.1",
     "morgan": "^1.12.1",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.6.1",
     "stripe": "^23.2.0",
     "zod": "^4.6.7"
   },

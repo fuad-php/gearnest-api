@@ -19,6 +19,8 @@ Client repository: sibling `../client` (Next.js 16).
 | Payments | Stripe Checkout + signed webhook |
 | Validation | zod |
 | Uploads | imgbb (server-side proxy) |
+| Scheduling | node-cron (hourly booking status sweep) |
+| Email | nodemailer over SMTP (console fallback when unconfigured) |
 | Logging | morgan |
 
 ### npm packages used
@@ -28,6 +30,8 @@ Client repository: sibling `../client` (Next.js 16).
 - `jose` — JWT verification via remote JWKS
 - `stripe` — Checkout sessions and webhook verification
 - `zod` — request validation
+- `node-cron` — scheduled booking status updates
+- `nodemailer` — completion emails to renters and owners
 - `cors` — origin allow-list for the client
 - `dotenv` — environment loading
 - `morgan` — request logging
@@ -58,9 +62,16 @@ cp .env.example .env
 | `STRIPE_SECRET_KEY` | no | Enables real Stripe Checkout |
 | `STRIPE_WEBHOOK_SECRET` | no | Verifies the Stripe webhook signature |
 | `IMGBB_API_KEY` | no | Enables image uploads |
+| `SMTP_HOST` | no | SMTP server for completion emails |
+| `SMTP_PORT` | no | SMTP port, defaults to `587` |
+| `SMTP_SECURE` | no | `true` for implicit TLS (port 465) |
+| `SMTP_USER` / `SMTP_PASS` | no | SMTP credentials |
+| `MAIL_FROM` | no | From header, e.g. `GearNest <no-reply@gearnest.com>` |
 
 The server starts without the optional keys. Without `STRIPE_SECRET_KEY`, checkout runs in
-a clearly labelled demo mode so the full booking flow remains testable.
+a clearly labelled demo mode so the full booking flow remains testable. Without SMTP
+credentials, completion emails are written to the console (`[mail:skipped] …`) instead of
+failing, so the cron job still works locally.
 
 ### 3. Seed
 
@@ -140,7 +151,7 @@ Base URL: `http://localhost:5000`.
 | `GET` | `/api/favorites/ids` | Equipment ids only |
 | `POST`/`DELETE` | `/api/favorites/:equipmentId` | Add/remove |
 | `POST` | `/api/uploads/image` | Base64 image → imgbb URL |
-| `GET` | `/api/bookings/my` | Customer bookings |
+| `GET` | `/api/bookings/my` | Customer bookings, paginated (`page`, `limit`, `status`) + per-status `counts` |
 | `PATCH` | `/api/bookings/:id/cancel` | Cancel before start |
 
 ### Payments
@@ -203,6 +214,19 @@ checkout ──▶ bookingDrafts (TTL 30 min)
   equipment quantity.
 - Money is stored as integer cents (`totalAmountCents`); equipment rates are whole dollars.
 
+### Automated completion and email
+
+- `node-cron` runs a sweep **hourly at minute 0 (UTC)**, plus once three seconds after boot
+  so a restarted server catches up immediately.
+- Every `confirmed` or `active` booking whose `rentalEndDate` is in the past is moved to
+  `completed` with an atomic `findOneAndUpdate`, which also records `completedAt` and
+  `completionReason: "rental-end"`. The owner dashboard uses the same helper, so a manual
+  completion and the cron job can never double-process a booking.
+- On completion, `notifyCompletion` emails the **renter** and the **equipment owner**
+  (`completionEmails`). `completionNotifiedAt` is written after sending, so retries and
+  restarts do not spam inboxes.
+- Without SMTP credentials the emails are logged, not sent — the status update still runs.
+
 ---
 
 ## Project structure
@@ -215,6 +239,7 @@ src/
   constants/index.js      categories and rental types
   middleware/auth.js      verifyToken + role guards
   middleware/error.js     404 and error handler
+  jobs/booking-status.js  hourly cron sweep + post-boot catch-up
   routes/
     equipment.js          public catalogue + owner CRUD
     reviews.js            public reviews
@@ -231,6 +256,10 @@ src/
     availability.js       overlap + booked quantity
     pricing.js            date parsing and totals
     bookings.js           idempotent draft → booking
+    completion.js         atomic completion + notification guard
+    booking-emails.js     renter and owner completion templates
+    mailer.js             nodemailer transport with console fallback
+    query.js              shared pagination helpers
     serialize.js          ObjectId/Date serialisation
     validate.js           zod helper + error formatting
 ```
@@ -244,9 +273,13 @@ src/
 2. Set `MONGODB_URI` (Atlas recommended), `BETTER_AUTH_URL` (the deployed client origin),
    and `CLIENT_URL` (same origin, plus any preview domains).
 3. Add `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `IMGBB_API_KEY` to enable those
-   integrations.
+   integrations, and the `SMTP_*` values to deliver completion emails.
 4. Register the webhook: `https://<api-domain>/api/payments/webhook` for the
    `checkout.session.completed` event.
 5. Verify `GET /api/health` returns `{ "status": "ok", "database": "connected" }`.
+
+The booking status job runs inside the API process. Keep a single instance (or one instance
+per cron owner) so the sweep is not duplicated; the atomic update makes duplicates harmless
+anyway, but only one process should send the notification emails.
 
 Keep `.env` out of git. `.env.example` documents every variable without values.
