@@ -79,7 +79,7 @@ export function completionEmails(booking, ownerEmail) {
   if (booking.customerEmail) {
     emails.push({
       to: booking.customerEmail,
-      subject: `Rental complete — ${booking.equipmentName}`,
+      subject: `Rental complete - ${booking.equipmentName}`,
       text: [
         `Hi ${booking.customerName},`,
         "",
@@ -115,7 +115,7 @@ export function completionEmails(booking, ownerEmail) {
   if (ownerEmail) {
     emails.push({
       to: ownerEmail,
-      subject: `Rental completed — ${booking.equipmentName}`,
+      subject: `Rental completed - ${booking.equipmentName}`,
       text: [
         `Hi ${booking.ownerName || "there"},`,
         "",
